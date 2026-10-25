@@ -160,13 +160,21 @@
     started = true;
     const cfg = config();
     const inviteLink = SITE + "#join=" + hh.code + "&u=" + encodeURIComponent(cfg.url) + "&k=" + encodeURIComponent(cfg.key);
-    let pill = null;
-    const db = window.createSupabaseDb(sb, hh.household_id, { onStatus: (st) => {
+    let pill = null, push = null;
+    const db = window.createSupabaseDb(sb, hh.household_id, { onChange: (ev) => { if (push) push.onChange(ev); }, onStatus: (st) => {
       if (st === "live") { if (pill) { pill.remove(); pill = null; } return; }
       setTimeout(() => { if (st === "live") return; if (!pill) { pill = document.createElement("div"); pill.className = "netpill"; document.body.appendChild(pill); } pill.textContent = st === "offline" ? "Sin conexión · guardaremos al volver" : "Reconectando…"; }, 2500);
     } });
+    if (window.CajaPush) {
+      const settings = () => db.peek("settings", "main") || {};
+      const nameOf = (id) => { const p = (Array.isArray(settings().people) ? settings().people : []).find((x) => x.id === id); return (p && p.name) || (id === "p1" ? "Persona 1" : id === "p2" ? "Persona 2" : "Tu pareja"); };
+      const fmt = (c) => (window.C && window.C.money ? window.C.money(c, settings().currency || "EUR") : (c / 100).toFixed(2) + " " + (settings().currency || "EUR"));
+      push = window.CajaPush.createPush(sb, { householdId: hh.household_id, userId: session.user.id,
+        ctx: () => ({ me: hh.person, nameOf, money: fmt, txn: (id) => db.peek("txns", id), goal: (id) => db.peek("goals", id) }) });
+      setTimeout(() => push.sync(), 3000);
+    }
     window.CAJA_HOST = {
-      name: "standalone", person: hh.person, lockPerson: true, inviteCode: hh.code, inviteLink, email: session.user.email,
+      name: "standalone", person: hh.person, lockPerson: true, inviteCode: hh.code, inviteLink, email: session.user.email, push,
       logout: async () => { await sb.auth.signOut(); location.reload(); },
       canInstall: () => !!installEvt || (isIOS && !standaloneMode()),
       install: async () => {

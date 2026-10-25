@@ -118,3 +118,37 @@ do $$ begin
     alter publication supabase_realtime add table public.docs;
   end if;
 end $$;
+
+-- ===== Notificaciones al móvil (Web Push) =====
+-- Una fila por móvil con los avisos activados. Cada persona solo ve y gestiona las suyas.
+create table if not exists public.push_subs (
+  endpoint text primary key check (endpoint ~ '^https://' and length(endpoint) < 1000),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  household_id uuid not null references public.households (id) on delete cascade,
+  sub jsonb not null check (jsonb_typeof(sub) = 'object' and pg_column_size(sub) < 4000),
+  prefs jsonb not null default '{}'::jsonb check (jsonb_typeof(prefs) = 'object' and pg_column_size(prefs) < 1000),
+  ua text check (length(ua) <= 200),
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subs_household on public.push_subs (household_id);
+alter table public.push_subs enable row level security;
+drop policy if exists push_select on public.push_subs;
+create policy push_select on public.push_subs for select to authenticated using (user_id = auth.uid());
+drop policy if exists push_insert on public.push_subs;
+create policy push_insert on public.push_subs for insert to authenticated with check (user_id = auth.uid() and public.is_household_member(household_id));
+drop policy if exists push_update on public.push_subs;
+create policy push_update on public.push_subs for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid() and public.is_household_member(household_id));
+drop policy if exists push_delete on public.push_subs;
+create policy push_delete on public.push_subs for delete to authenticated using (user_id = auth.uid());
+revoke all on public.push_subs from anon;
+grant select, insert, update, delete on public.push_subs to authenticated;
+
+-- Claves del servidor de avisos (VAPID). Las genera la propia función la primera vez; nadie más puede leerlas.
+create table if not exists public.push_keys (
+  id int primary key default 1 check (id = 1),
+  public_key text not null,
+  private_key text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.push_keys enable row level security;
+revoke all on public.push_keys from anon, authenticated;

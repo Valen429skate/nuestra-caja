@@ -86,6 +86,8 @@
     }
     const poll = setInterval(() => loadAll().catch(() => {}), 60000);
 
+    // Aviso de cada cambio que hace ESTE móvil (no los que llegan del otro), p. ej. para notificar a la pareja.
+    const changed = (ev) => { if (o.onChange) { try { o.onChange(ev); } catch (e) { console.error(e); } } };
     async function write(col, id, data) {
       if (!/^[a-z]{1,20}$/.test(col) || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw err("invalid_argument", "Ruta no válida");
       if (!data || typeof data !== "object" || Array.isArray(data)) throw err("invalid_argument", "Documento no válido");
@@ -93,12 +95,14 @@
       colMap(col).set(id, clone(data)); emit(col, id); // optimista
       const { error } = await sb.from("docs").upsert({ household_id: householdId, col, id, data }, { onConflict: "household_id,col,id" });
       if (error) { if (prev === undefined) colMap(col).delete(id); else colMap(col).set(id, prev); emit(col, id); throw mapError(error); }
+      changed({ op: "set", col, id, prev: prev === undefined ? null : clone(prev), next: clone(data) });
     }
     async function remove(col, id) {
       const prev = colMap(col).get(id);
       colMap(col).delete(id); emit(col, id);
       const { error } = await sb.from("docs").delete().eq("household_id", householdId).eq("col", col).eq("id", id);
       if (error) { if (prev !== undefined) { colMap(col).set(id, prev); emit(col, id); } throw mapError(error); }
+      changed({ op: "delete", col, id, prev: prev === undefined ? null : clone(prev), next: null });
     }
     function docRef(col, id) {
       return {
@@ -124,6 +128,7 @@
       collection: collRef,
       doc: (path) => { const p = String(path).split("/"); if (p.length !== 2) throw new TypeError("Ruta de documento no válida: " + path); return docRef(p[0], p[1]); },
       reload: () => loadAll(),
+      peek: (col, id) => { const d = colMap(col).get(id); return d === undefined ? null : clone(d); },
       close: () => { clearInterval(poll); if (channel) sb.removeChannel(channel); },
     };
   }

@@ -27,6 +27,7 @@
     tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>', target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>', share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>',
     down: '<path d="M12 4v12M6 11l6 6 6-6M4 20h16"/>', trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 013-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 01-3 3H3"/>',
+    bell: '<path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/>',
     swap: '<path d="M7 7h13l-4-4M17 17H4l4 4"/>', check: '<path d="M5 12l5 5 9-10"/>', chev: '<path d="M9 6l6 6-6 6"/>', coin: '<circle cx="12" cy="12" r="9"/><path d="M14.5 9a2.5 2 0 00-2.5-1.5c-1.4 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1.1 2-2.5 2a2.5 2 0 01-2.5-1.5M12 6v1.5M12 16.5V18"/>',
   };
   const icon = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[n] || "") + "</svg>";
@@ -309,7 +310,7 @@
     const acct = HOST.name === "standalone" ? '<section class="card"><h2>Cuenta</h2><div class="menu">' + item("invite-code", "share", "Código para tu pareja", esc(HOST.inviteCode || "—")) + item("logout", "out", "Cerrar sesión", esc(HOST.email || "")) + "</div></section>" : "";
     return '<section class="card"><h2>Juntos</h2><div class="menu">' + item("view-savings", "jar", "Huchas de ahorro", S.goals.length + (S.goals.length === 1 ? " hucha" : " huchas")) + item("achievements", "trophy", "Logros", achList().filter((a) => a.unlocked).length + " de 12 desbloqueados") + item("story", "spark", "Historia del mes", cap(monthLabel(S.month))) + "</div></section>" +
       '<section class="card"><h2>Organización</h2><div class="menu">' + item("fixed", "repeat", "Gastos fijos", S.fixed.length + " configurados · alquiler, luz, internet…") + item("budget", "target", "Presupuesto mensual", S.settings.budget ? money(S.settings.budget) + " al mes" : "Sin definir") + item("cats", "tag", "Categorías", S.cats.length + " categorías") + "</div></section>" +
-      '<section class="card"><h2>Vosotros</h2><div class="menu">' + item("names", "user", HOST.lockPerson ? "Nombres" : "Nombres y quién soy en este móvil", "Estás como " + esc(nameOf(S.uid))) + item("invite", "down", "Instalarla en los dos móviles", "Como una app en la pantalla de inicio") + item("settings", "coin", "Nombre de la caja y moneda", esc(S.settings.title || "Nuestra Caja") + " · " + esc(cur())) + "</div></section>" +
+      '<section class="card"><h2>Vosotros</h2><div class="menu">' + item("names", "user", HOST.lockPerson ? "Nombres" : "Nombres y quién soy en este móvil", "Estás como " + esc(nameOf(S.uid))) + item("invite", "down", "Instalarla en los dos móviles", "Como una app en la pantalla de inicio") + (HOST.push ? item("push", "bell", "Notificaciones", "Avisos al móvil de lo que hace tu pareja") : "") + item("settings", "coin", "Nombre de la caja y moneda", esc(S.settings.title || "Nuestra Caja") + " · " + esc(cur())) + "</div></section>" +
       '<section class="card"><h2>Datos</h2><div class="menu">' + item("export", "down", "Exportar a Excel (CSV)", "Todos los movimientos") + item("wipe", "trash", "Borrar todos los movimientos", "Pide confirmación") + "</div></section>" +
       acct + '<p class="dim" style="font-size:12px;text-align:center;margin:4px 0">' + (HOST.name === "claude" ? "Los datos se guardan en vuestra app compartida de Claude. Solo los ve quien tenga acceso." : "Los datos se guardan en vuestro servidor privado. Solo los veis vosotros dos.") + "</p>";
   }
@@ -529,6 +530,41 @@
   function settingsSheet() {
     openSheet(head("Nombre y moneda") + '<label class="field"><span>Nombre de la caja</span><input class="inp" id="stitle" maxlength="30" value="' + esc(S.settings.title || "") + '" placeholder="Nuestra Caja"></label><label class="field"><span>Moneda</span><select class="inp" id="scur">' + [["EUR", "Euro (€)"], ["USD", "Dólar ($)"], ["ARS", "Peso argentino ($)"], ["GBP", "Libra (£)"]].map(([k, l]) => '<option value="' + k + '"' + (cur() === k ? " selected" : "") + ">" + l + "</option>").join("") + '</select></label><div class="dim" style="font-size:12.5px">Cambiar la moneda solo cambia cómo se muestran los importes; no los convierte.</div><button class="btn primary block" data-act="settings-save" style="height:50px">Guardar</button>');
   }
+  /* ---------- Notificaciones (app propia) ---------- */
+  async function pushSheet(msg) {
+    const P = HOST.push; if (!P) return;
+    openSheet(head("Notificaciones") + '<div class="dim" style="text-align:center;padding:18px 0">Comprobando…</div>');
+    let st = "off"; try { st = await P.status(); } catch (e) { st = "error"; }
+    const partnerName = nameOf(partner());
+    const intro = '<div class="note accent">' + icon("bell") + "<div>Te llega un aviso al móvil cuando " + esc(partnerName) + " apunta algo, aunque tengas la app cerrada. Cada uno lo activa en su propio móvil.</div></div>";
+    let body = "";
+    if (st === "ios-install") body = '<div class="note warn">' + icon("info") + '<div><b>En iPhone primero hay que instalarla.</b> En Safari pulsa Compartir → <b>Añadir a pantalla de inicio</b>, abre la app desde ese icono y vuelve aquí. (Necesita iOS 16.4 o posterior.)</div></div>';
+    else if (st === "unsupported") body = '<div class="note warn">' + icon("info") + "<div>Este navegador no permite notificaciones. En Android usa <b>Chrome</b>; en iPhone, la app instalada desde <b>Safari</b>.</div></div>";
+    else if (st === "denied") body = '<div class="note warn">' + icon("info") + "<div>Las notificaciones están <b>bloqueadas</b> para esta app. Actívalas en los ajustes del móvil (Ajustes → Notificaciones → Nuestra Caja, o en Chrome → Configuración del sitio → Notificaciones) y vuelve a abrir esta pantalla.</div></div>";
+    else if (st === "error") body = '<div class="note warn">' + icon("info") + "<div>No se pudo comprobar. Revisa tu conexión.</div></div>";
+    else if (st === "off") body = '<button class="btn primary block" data-act="push-on" style="height:50px">' + icon("bell") + "Activar notificaciones</button>";
+    else {
+      const prefs = await P.prefs().catch(() => ({}));
+      body = '<div class="list">' + P.types.map((t) => { const on = prefs[t.id] !== false; return '<button class="item" data-act="push-pref" data-v="' + t.id + '" aria-pressed="' + on + '"><div class="grow" style="white-space:normal"><div class="t1">' + esc(t.label) + '</div><div class="t2">' + esc(t.hint) + '</div></div><span class="tag ' + (on ? "p1" : "") + '">' + (on ? "Sí" : "No") + "</span></button>"; }).join("") + "</div>" +
+        '<button class="btn block" data-act="push-test">' + icon("send") + "Enviarme un aviso de prueba</button>" +
+        '<button class="btn ghost block" data-act="push-off">Desactivar en este móvil</button>';
+    }
+    if (!$("#sheetRoot .sheet")) return; // la cerraron mientras comprobábamos
+    openSheet(head("Notificaciones") + intro + (msg ? '<div class="note">' + icon("check") + "<div>" + esc(msg) + "</div></div>" : "") + body);
+  }
+  async function pushAct(kind, v) {
+    const P = HOST.push; if (!P) return;
+    try {
+      if (kind === "on") { toast("Activando…"); await P.enable(); buzz(); return pushSheet("¡Listo! Las notificaciones están activadas en este móvil."); }
+      if (kind === "off") { await P.disable(); return pushSheet("Desactivadas en este móvil."); }
+      if (kind === "pref") { const prefs = await P.prefs(); await P.setPref(v, prefs[v] === false); return pushSheet(); }
+      if (kind === "test") { const r = await P.test(); toast(r && r.sent ? "Aviso de prueba enviado: debería llegarte en unos segundos" : "No se pudo enviar el aviso. Desactiva y vuelve a activar."); }
+    } catch (e) {
+      const c = e && e.code;
+      toast(c === "denied" ? "No diste permiso para notificaciones." : c === "ios-install" ? "Primero instálala en la pantalla de inicio." : "No se pudo completar. Revisa tu conexión e inténtalo otra vez.");
+      if (c === "denied" || c === "ios-install") pushSheet();
+    }
+  }
   function inviteSheet() {
     if (HOST.name === "standalone") return openSheet(head("Instalarla en los dos móviles") +
       '<div class="list"><div class="item"><div class="emoji">1</div><div class="grow" style="white-space:normal">Mándale a tu pareja este enlace (ya lleva vuestro código):<br><b class="mono" style="word-break:break-all">' + esc(HOST.inviteLink || "") + '</b></div></div>' +
@@ -709,6 +745,11 @@
       case "settings": settingsSheet(); break;
       case "settings-save": if (await save(() => S.db.doc("settings/main").set(clean(Object.assign({}, S.settings, { title: $("#stitle").value.trim() || null, currency: $("#scur").value }))), "Guardado")) closeSheet(); break;
       case "invite": inviteSheet(); break;
+      case "push": pushSheet(); break;
+      case "push-on": pushAct("on"); break;
+      case "push-off": pushAct("off"); break;
+      case "push-pref": pushAct("pref", el.dataset.v); break;
+      case "push-test": pushAct("test"); break;
       case "export": await exportCsv(); break;
       case "wipe": openSheet(head("Borrar todos los movimientos") + '<div class="note warn">' + icon("info") + '<div>Se borrarán los ' + S.txns.length + ' movimientos de los dos. Las huchas, categorías y gastos fijos se conservan. No se puede deshacer.</div></div><label class="field"><span>Escribe BORRAR para confirmar</span><input class="inp" id="wipeok" autocomplete="off"></label><button class="btn danger block" data-act="wipe-ok">Borrar definitivamente</button>'); break;
       case "wipe-ok": if ($("#wipeok").value !== "BORRAR") { toast("Escribe BORRAR para confirmar"); break; } if (await save(async () => { for (const t of S.txns.slice()) await col("txns").doc(t.id).delete(); }, "Movimientos borrados")) closeSheet(); break;
